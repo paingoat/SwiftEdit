@@ -64,6 +64,16 @@ pip install -r requirements.txt
 pip install numpy==1.26.4
 ```
 
+### Hugging Face cache (`.env`)
+Models pulled from Hugging Face (`sd-turbo`, `stable-diffusion-2-1-base`, `IP-Adapter`) use a custom cache when `STORAGE` is set:
+
+```bash
+cp .env.example .env
+# Edit .env, e.g. STORAGE=E:/hf_cache
+```
+
+`STORAGE` becomes `HF_HOME`; downloads go to `STORAGE/hub/`. Without `STORAGE`, the default Hugging Face cache is used (`~/.cache/huggingface` on Linux).
+
 ## 📍 Checkpoints
 We have published SwiftEdit's pretrained weights via releases of this repository. Please download all required checkpoints and specify corresponding weight's path before editing. To download, please follow the instructions below:
 
@@ -91,8 +101,10 @@ SwiftEdit
 |   ├───mask_ip_controller.py: Attention rescaling with mask-guided.
 |---swiftedit_weights/: location for the checkpoints, see above for download instructions.
 ├───infer.py: Main logic code for editing.
+├───streamlit_app.py: Streamlit web UI for editing.
 ├───models.py: Image generation and inversion model.
 ├───requirements.txt: Required packages to run this repository.
+├───requirements-ui.txt: Streamlit dependency.
 └───README.md: This README file.
 ```
 
@@ -102,6 +114,20 @@ For more editing examples, visit our [project page](https://swift-edit.github.io
 
 ## 🖌️ Try your edits
 Locate path to our provided checkpoints, source input images (or try our prepared examples in ```assets/imgs_demo```), source prompt (optional), and edit prompt in ```infer.py``` to test your own edits.
+
+## Streamlit demo
+A browser UI wraps the same `edit_image()` API as `infer.py` without changing the core method.
+
+```bash
+pip install -r requirements-ui.txt
+# If not already installed for inference:
+pip install -r requirements.txt
+pip install numpy==1.26.4
+
+streamlit run streamlit_app.py
+```
+
+Requirements: CUDA GPU (~24GB VRAM), downloaded `swiftedit_weights/` checkpoints. Optional: `STORAGE` in `.env` for HF cache; `SWIFTEDIT_WEIGHTS_ROOT` or the sidebar **Weights directory** for SwiftEdit checkpoints.
 
 ## License
 

@@ -6,6 +6,7 @@ Jinja2
 diffusers==0.22.0
 huggingface-hub==0.25.2
 einops
+python-dotenv>=1.0.0
 
 --extra-index-url https://download.pytorch.org/whl/cu118
 torch==2.2.1

@@ -1,6 +1,8 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: BSD-3-Clause-Clear
 
+import env_config  # noqa: F401 — STORAGE from .env -> HF_HOME / HUGGINGFACE_HUB_CACHE
+
 import torch
 from diffusers import AutoencoderKL, DDPMScheduler, UNet2DConditionModel
 from PIL import Image

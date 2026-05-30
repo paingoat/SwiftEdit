@@ -1,0 +1,6 @@
+.env
+result/
+__pycache__/
+*.pyc
+.swiftedit_weights.tar.gz*
+swiftedit_weights.tar.gz*

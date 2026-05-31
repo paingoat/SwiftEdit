@@ -103,8 +103,7 @@ SwiftEdit
 ├───infer.py: Main logic code for editing.
 ├───streamlit_app.py: Streamlit web UI for editing.
 ├───models.py: Image generation and inversion model.
-├───requirements.txt: Required packages to run this repository.
-├───requirements-ui.txt: Streamlit dependency.
+├───requirements.txt: Required packages (inference + Streamlit UI).
 └───README.md: This README file.
 ```
 
@@ -119,8 +118,6 @@ Locate path to our provided checkpoints, source input images (or try our prepare
 A browser UI wraps the same `edit_image()` API as `infer.py` without changing the core method.
 
 ```bash
-pip install -r requirements-ui.txt
-# If not already installed for inference:
 pip install -r requirements.txt
 pip install numpy==1.26.4
 

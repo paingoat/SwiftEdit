@@ -3,8 +3,9 @@ accelerate
 ftfy
 tensorboard
 Jinja2
+# diffusers 0.22 imports hf_cache_home (removed in huggingface-hub>=1.0)
+huggingface-hub>=0.23.2,<1.0.0
 diffusers==0.22.0
-huggingface-hub==0.25.2
 einops
 python-dotenv>=1.0.0
 streamlit>=1.28.0

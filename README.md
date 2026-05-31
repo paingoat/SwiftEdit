@@ -124,6 +124,13 @@ pip install numpy==1.26.4
 streamlit run streamlit_app.py
 ```
 
+If you see `cannot import name 'hf_cache_home'`, a newer `huggingface-hub` (≥1.0) was installed. Re-pin and reinstall:
+
+```bash
+pip install "huggingface-hub>=0.23.2,<1.0.0" --force-reinstall
+python -c "from huggingface_hub.constants import hf_cache_home; import diffusers; print('ok')"
+```
+
 Requirements: CUDA GPU (~24GB VRAM), downloaded `swiftedit_weights/` checkpoints. Optional: `STORAGE` in `.env` for HF cache; `SWIFTEDIT_WEIGHTS_ROOT` or the sidebar **Weights directory** for SwiftEdit checkpoints.
 
 ## License

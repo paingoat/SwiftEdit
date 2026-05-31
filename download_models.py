@@ -10,10 +10,7 @@ Configuration is read from .env (copy .env.example -> .env and fill in):
     STORAGE=E:/hf_cache        # where to cache models (optional)
     HF_TOKEN=hf_xxxxxxxxxxxx   # required for gated models
 
-The gated model stabilityai/stable-diffusion-2-1-base requires:
-  1. A HuggingFace account
-  2. License acceptance at https://huggingface.co/stabilityai/stable-diffusion-2-1
-  3. An access token from https://huggingface.co/settings/tokens
+HF_TOKEN is optional for public mirrors; set it if you use gated repos.
 """
 
 import env_config  # noqa: F401 — applies STORAGE -> HF_HOME before any HF import
@@ -39,7 +36,7 @@ MODELS = [
         "SD-Turbo  (used by InverseModel)",
     ),
     (
-        "stabilityai/stable-diffusion-2-1-base",
+        "Manojb/stable-diffusion-2-1-base",
         # AuxiliaryModel: DDPMScheduler, AutoencoderKL, AutoTokenizer, CLIPTextModel
         ["scheduler/**", "tokenizer/**", "text_encoder/**", "vae/**", "*.json", "*.txt"],
         "SD-2.1-base  (used by AuxiliaryModel)",
@@ -57,8 +54,7 @@ def main() -> None:
     token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
     if not token:
         print(
-            "Tip: set HF_TOKEN=hf_xxxx for gated models "
-            "(stabilityai/stable-diffusion-2-1-base requires login + license acceptance)."
+            "Tip: set HF_TOKEN in .env if any repo requires authentication."
         )
 
     print("SwiftEdit — pre-downloading HuggingFace model weights\n")

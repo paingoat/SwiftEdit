@@ -65,7 +65,7 @@ pip install numpy==1.26.4
 ```
 
 ### Hugging Face cache (`.env`)
-Models pulled from Hugging Face (`sd-turbo`, `stable-diffusion-2-1-base`, `IP-Adapter`) use a custom cache when `STORAGE` is set:
+Models pulled from Hugging Face (`sd-turbo`, `Manojb/stable-diffusion-2-1-base`, `IP-Adapter`) use a custom cache when `STORAGE` is set:
 
 ```bash
 cp .env.example .env

@@ -5,13 +5,29 @@ can run fully offline afterwards.
 Usage:
     python download_models.py
 
-Set STORAGE in .env (or the environment) to redirect the HF cache, e.g.:
-    STORAGE=E:/hf_cache
+Configuration is read from .env (copy .env.example -> .env and fill in):
+
+    STORAGE=E:/hf_cache        # where to cache models (optional)
+    HF_TOKEN=hf_xxxxxxxxxxxx   # required for gated models
+
+The gated model stabilityai/stable-diffusion-2-1-base requires:
+  1. A HuggingFace account
+  2. License acceptance at https://huggingface.co/stabilityai/stable-diffusion-2-1
+  3. An access token from https://huggingface.co/settings/tokens
 """
 
 import env_config  # noqa: F401 — applies STORAGE -> HF_HOME before any HF import
 
+import os
 import sys
+
+# hf_transfer accelerates downloads but is optional; disable if not installed
+# to avoid a crash when HF_HUB_ENABLE_HF_TRANSFER=1 is set in the environment.
+try:
+    import hf_transfer  # noqa: F401
+except ImportError:
+    os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "0"
+
 from huggingface_hub import snapshot_download
 
 # Only the subfolders actually loaded by InverseModel / AuxiliaryModel
@@ -38,6 +54,13 @@ MODELS = [
 
 
 def main() -> None:
+    token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+    if not token:
+        print(
+            "Tip: set HF_TOKEN=hf_xxxx for gated models "
+            "(stabilityai/stable-diffusion-2-1-base requires login + license acceptance)."
+        )
+
     print("SwiftEdit — pre-downloading HuggingFace model weights\n")
     ok = True
     for repo_id, allow_patterns, desc in MODELS:
@@ -48,6 +71,7 @@ def main() -> None:
             path = snapshot_download(
                 repo_id=repo_id,
                 allow_patterns=allow_patterns,
+                token=token or None,
             )
             print(f"  cached -> {path}")
         except Exception as exc:

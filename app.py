@@ -55,6 +55,10 @@ def run_edit(source_image: Image.Image, src_prompt: str, edit_prompt: str, edit_
     if not edit_prompt.strip():
         raise gr.Error("Please enter an edit prompt.")
 
+    # Fallback to 1.0 if the user cleared the number field in the UI
+    if edit_strength is None:
+        edit_strength = 1.0
+
     # Save uploaded image to a temp file (edit_image expects a path)
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
         source_image.save(tmp, format="PNG")
@@ -81,8 +85,8 @@ def run_edit(source_image: Image.Image, src_prompt: str, edit_prompt: str, edit_
     save_image(result_tensor, save_path)
     print(f"Saved to {save_path}")
 
-    # Convert tensor → PIL for Gradio display
-    result_pil = result_tensor.squeeze(0).clamp(0, 1).cpu()
+    # Convert tensor → PIL for Gradio display (index 1 is the edited image)
+    result_pil = result_tensor[1].clamp(0, 1).cpu()
     result_pil = result_pil.permute(1, 2, 0).numpy()
     result_pil = Image.fromarray((result_pil * 255).astype("uint8"))
 

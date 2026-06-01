@@ -54,6 +54,15 @@ First, clone the repository
 git clone https://github.com/Qualcomm-AI-research/SwiftEdit.git
 ```
 
+Set up the environment file for HuggingFace authentication and cache configuration:
+
+```bash
+cp .env.example .env
+# Edit .env and fill in your HuggingFace token and storage path:
+#   HF_TOKEN=hf_your_token_here
+#   STORAGE=/workspace/data
+```
+
 Install required packages as listed in the requirements file and other packages as follows.
 
 ```
@@ -65,7 +74,21 @@ pip install numpy==1.26.4
 ```
 
 ## 📍 Checkpoints
-We have published SwiftEdit's pretrained weights via releases of this repository. Please download all required checkpoints and specify corresponding weight's path before editing. To download, please follow the instructions below:
+We have published SwiftEdit's pretrained weights via releases of this repository. Please download all required checkpoints and specify corresponding weight's path before editing.
+
+### Option 1: Automated download (recommended)
+
+Run the download script to automatically fetch SwiftEdit weights and pre-cache all base models:
+
+```bash
+python download_weights.py
+```
+
+This script will:
+- Download `swiftedit_weights.tar.gz` from HuggingFace and extract it.
+- Pre-cache base models (`sd-turbo`, `stable-diffusion-2-1-base`, `IP-Adapter`) into the `STORAGE` path configured in `.env`.
+
+### Option 2: Manual download
 
 ```bash
 wget https://github.com/Qualcomm-AI-research/SwiftEdit/releases/download/v1.0/swiftedit_weights.tar.gz.part-aa
@@ -89,9 +112,13 @@ SwiftEdit
 │   ├───attention_processor.py: Base IP-Adapter code.
 |   ├───mask_attention_processor.py: Our customized IP-Adapter code for mask-guided attention.
 |   ├───mask_ip_controller.py: Attention rescaling with mask-guided.
-|---swiftedit_weights/: location for the checkpoints, see above for download instructions.
+|---swiftedit_weights/: Location for the checkpoints, see above for download instructions.
+|---results/: Auto-saved editing results.
+├───app.py: Gradio web UI for interactive editing.
+├───download_weights.py: Script to download all required weights.
 ├───infer.py: Main logic code for editing.
 ├───models.py: Image generation and inversion model.
+├───.env.example: Template for environment variables (HF_TOKEN, STORAGE).
 ├───requirements.txt: Required packages to run this repository.
 └───README.md: This README file.
 ```
@@ -101,7 +128,26 @@ For more editing examples, visit our [project page](https://swift-edit.github.io
 
 
 ## 🖌️ Try your edits
+
+### Gradio Web UI (recommended)
+
+Launch the interactive web interface:
+
+```bash
+python app.py
+```
+
+Open the URL shown in the terminal (default: `http://0.0.0.0:7860`). Upload a source image, enter prompts, adjust the **Edit Strength** slider, and click **⚡ Edit**. Results are automatically saved to the `results/` directory with the naming convention `{src_prompt}->{edit_prompt}_SY_{strength}.png`.
+
+### CLI
+
 Locate path to our provided checkpoints, source input images (or try our prepared examples in ```assets/imgs_demo```), source prompt (optional), and edit prompt in ```infer.py``` to test your own edits.
+
+```bash
+python infer.py
+```
+
+Results are saved to the `results/` directory.
 
 ## License
 

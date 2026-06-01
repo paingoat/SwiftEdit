@@ -99,7 +99,7 @@ class AuxiliaryModel:
     """
     def __init__(
         self,
-        model_name="stabilityai/stable-diffusion-2-1-base",
+        model_name="Manojb/stable-diffusion-2-1-base",
         image_encoder_path="h94/IP-Adapter",
         device="cuda",
     ):

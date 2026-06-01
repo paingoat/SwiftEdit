@@ -1,7 +1,15 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: BSD-3-Clause-Clear
 
-import os, time
+import os, time, re
+
+from dotenv import load_dotenv
+load_dotenv()
+
+# Set HF cache directory from .env STORAGE variable (if available)
+_storage = os.getenv("STORAGE")
+if _storage:
+    os.environ["HF_HOME"] = _storage
 
 import torch
 from PIL import Image
@@ -102,12 +110,21 @@ if __name__ == "__main__":
     img_path = "./assets/imgs_demo/woman_face.jpg"
     src_p = "woman"
     edit_p = "Taylor Swift"
+    scale_ta = 1
 
     # img_path = "./assets/imgs_demo/02.jpg"
     # src_p = "dog"
     # edit_p = "dog with mouth opened"
 
     start_time = time.time()
-    result = edit_image(img_path, src_p, edit_p, inverse_model, aux_model, ip_sb_model)
+    result = edit_image(img_path, src_p, edit_p, inverse_model, aux_model, ip_sb_model, scale_ta=scale_ta)
     print(f"Edit {src_p}->{edit_p} in {time.time()-start_time}")
-    save_image(result, f"result_{src_p}->{edit_p}.png")
+
+    # Save result with new naming convention
+    os.makedirs("results", exist_ok=True)
+    safe_src = re.sub(r'[\\/*?:"<>|]', '_', src_p)
+    safe_edit = re.sub(r'[\\/*?:"<>|]', '_', edit_p)
+    save_name = f"{safe_src}->{safe_edit}_SY_{scale_ta}.png"
+    save_image(result, os.path.join("results", save_name))
+    print(f"Saved to results/{save_name}")
+

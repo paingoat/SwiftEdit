@@ -77,11 +77,14 @@ def run_edit(source_image: Image.Image, src_prompt: str, edit_prompt: str, edit_
     finally:
         os.unlink(tmp_path)
 
-    # Save result with naming convention: {src_p}->{edit_p}_SY_{scale_ta}.png
-    safe_src = _sanitize(src_prompt) if src_prompt else "none"
-    safe_edit = _sanitize(edit_prompt)
-    save_name = f"{safe_src}->{safe_edit}_SY_{edit_strength}.png"
-    save_path = os.path.join(RESULTS_DIR, save_name)
+    # Save result in a folder named after the source prompt
+    safe_src = _sanitize(src_prompt).strip() if src_prompt and src_prompt.strip() else "none"
+    safe_edit = _sanitize(edit_prompt).strip()
+    target_dir = os.path.join(RESULTS_DIR, safe_src)
+    os.makedirs(target_dir, exist_ok=True)
+
+    save_name = f"{safe_edit}_SY_{edit_strength}.png"
+    save_path = os.path.join(target_dir, save_name)
     save_image(result_tensor, save_path)
     print(f"Saved to {save_path}")
 

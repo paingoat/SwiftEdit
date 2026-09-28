@@ -116,11 +116,8 @@ class IPAttnProcessor2_0WithIPMaskController(torch.nn.Module):
             masked_ip_hidden_states = self.controller.fwd_ip(query, ip_key, ip_value, sim_ip,
                                                     attn.heads, scale=attn.scale)
             
-            # Reshape both from (b*h, n, d) -> (b, n, h*d) before summing
-            B_size = hidden_states.shape[0] // head
-            hidden_states = rearrange(hidden_states, '(b h) n d -> b n (h d)', b=B_size, h=head)
+            # attn_batch() already returns (b, n, h*d) — no reshape needed here
             hidden_states = hidden_states.to(query.dtype)
-            masked_ip_hidden_states = rearrange(masked_ip_hidden_states, '(b h) n d -> b n (h d)', b=B_size, h=head)
             masked_ip_hidden_states = masked_ip_hidden_states.to(query.dtype)
 
             hidden_states = hidden_states + masked_ip_hidden_states

@@ -77,9 +77,8 @@ class MaskController:
                 **kwargs
             )
             if self.scale_text_hiddenstate:
-                # scale within foreground mask only
-                # out_target = self.scale_text_hiddenstate * out_target * mask + out_target * (1 - mask)
-                out_target = self.scale_text_hiddenstate * out_target
+                # Scale foreground only; background stays at 1x (source attention)
+                out_target = self.scale_text_hiddenstate * out_target * mask + out_source * (1 - mask)
             out = torch.cat([out_source, out_target], dim=0)
         elif B == 3:
             out_source = self.attn_batch(
@@ -106,11 +105,8 @@ class MaskController:
                 **kwargs
             )
             if self.scale_text_hiddenstate:
-                # scale within foreground mask only
-                out_target1 = self.scale_text_hiddenstate * out_target1 * mask + out_target1 * (
-                    1 - mask
-                )
-                # out_target = self.scale_text_hiddenstate * out_target * mask + out_source * (1 - mask)
+                # Scale foreground only; background uses source attention
+                out_target1 = self.scale_text_hiddenstate * out_target1 * mask + out_source * (1 - mask)
             out = torch.cat([out_source, out_target1, out_target2], dim=0)
         return out
 

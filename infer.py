@@ -45,10 +45,12 @@ def edit_image(
     mask_threshold=0.5,
 ):
     """
-        Save keysteps to file.
+        Edit a source image guided by text prompts.
             + img_path: path to the source image.
             + src_p: Source Prompt that describes source image (could leave it empty).
             + edit_p: Edit Prompt that describes your desired changes.
+        Returns:
+            (res_gen_img, mask12) — edited-image tensor and the binary editing mask (64×64, on CPU).
     """
     mid_timestep = torch.ones((1,), dtype=torch.int64, device="cuda") * 500
     final_timestep = torch.ones((1,), dtype=torch.int64, device="cuda") * 999
@@ -91,7 +93,7 @@ def edit_image(
         pil_image=pil_img_cond, prompts=[src_p, edit_p], noise=input_sb
     )
 
-    return res_gen_img
+    return res_gen_img, mask12.cpu()
 
 
 if __name__ == "__main__":
@@ -117,7 +119,7 @@ if __name__ == "__main__":
     # edit_p = "dog with mouth opened"
 
     start_time = time.time()
-    result = edit_image(img_path, src_p, edit_p, inverse_model, aux_model, ip_sb_model, scale_ta=scale_ta)
+    result, _ = edit_image(img_path, src_p, edit_p, inverse_model, aux_model, ip_sb_model, scale_ta=scale_ta)
     print(f"Edit {src_p}->{edit_p} in {time.time()-start_time}")
 
     # Save result with new naming convention

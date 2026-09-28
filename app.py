@@ -18,8 +18,10 @@ if _storage:
 
 import torch
 import gradio as gr
+import numpy as np
 from PIL import Image
 from torchvision.utils import save_image
+import torch.nn.functional as F
 
 from infer import edit_image, SWIFTEDIT_WEIGHTS_ROOT
 from models import InverseModel, AuxiliaryModel, IPSBV2Model
@@ -40,6 +42,29 @@ ip_ckpt = os.path.join(SWIFTEDIT_WEIGHTS_ROOT, "ip_adapter_ckpt-90k/ip_adapter.b
 ip_sb_model = IPSBV2Model(path_unet_sb, ip_ckpt, aux_model, with_ip_mask_controller=True)
 
 print("Models loaded ✓")
+
+def _mask_to_overlay(source_pil: Image.Image, mask_tensor) -> Image.Image:
+    """
+    Blend the binary editing mask onto the source image.
+    - Red-tinted highlight on the EDIT region (mask == 1)
+    - Slightly dimmed overlay on the background (mask == 0)
+    Returns a PIL Image at 512×512.
+    """
+    img = source_pil.resize((512, 512)).convert("RGBA")
+
+    # Upsample mask: (1, 64, 64) → (512, 512)
+    mask_4d = mask_tensor.unsqueeze(0).unsqueeze(0).float()  # (1,1,H,W)
+    mask_512 = F.interpolate(mask_4d, size=(512, 512), mode="nearest").squeeze().numpy()
+
+    # Build RGBA overlay layer
+    overlay = np.zeros((512, 512, 4), dtype=np.uint8)
+    fg = mask_512 > 0.5  # foreground = edit region
+    overlay[fg]  = [255, 80, 80, 120]   # semi-transparent red highlight
+    overlay[~fg] = [30,  30, 30,  80]   # dim gray for background
+
+    overlay_pil = Image.fromarray(overlay, mode="RGBA")
+    blended = Image.alpha_composite(img, overlay_pil).convert("RGB")
+    return blended
 
 
 # ── Helpers ────────────────────────────────────────────────────────
@@ -65,7 +90,7 @@ def run_edit(source_image: Image.Image, src_prompt: str, edit_prompt: str, edit_
         tmp_path = tmp.name
 
     try:
-        result_tensor = edit_image(
+        result_tensor, mask_tensor = edit_image(
             img_path=tmp_path,
             src_p=src_prompt,
             edit_p=edit_prompt,
@@ -93,7 +118,10 @@ def run_edit(source_image: Image.Image, src_prompt: str, edit_prompt: str, edit_
     result_pil = result_pil.permute(1, 2, 0).numpy()
     result_pil = Image.fromarray((result_pil * 255).astype("uint8"))
 
-    return result_pil
+    # Build mask overlay on top of source image
+    mask_overlay_pil = _mask_to_overlay(source_image, mask_tensor)
+
+    return result_pil, mask_overlay_pil
 
 
 # ── Gradio UI ──────────────────────────────────────────────────────
@@ -119,13 +147,26 @@ with gr.Blocks(title="SwiftEdit", theme=gr.themes.Soft()) as demo:
                 label="Edit Strength",
                 value=1,
             )
+        with gr.Column():
+            mask_image = gr.Image(
+                label="Predicted Edit Mask (🔴 = edit region)",
+                type="pil",
+                height=400,
+                interactive=False,
+            )
+            gr.Markdown(
+                """**How the mask works:**  
+                The model automatically estimates *which region* of the image needs to change 
+                based on the difference between inverted noise for the source vs. edit prompt.  
+                🔴 Red = foreground (edit region) · 🔲 Dark = background (preserved)"""
+            )
 
     edit_btn = gr.Button("⚡ Edit", variant="primary", size="lg")
 
     edit_btn.click(
         fn=run_edit,
         inputs=[source_image, src_prompt, edit_prompt, edit_strength],
-        outputs=[edited_image],
+        outputs=[edited_image, mask_image],
     )
 
 

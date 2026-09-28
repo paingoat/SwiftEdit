@@ -1,0 +1,228 @@
+{
+  "communities": {
+    "0": [
+      "app",
+      "dotenv",
+      "download_weights",
+      "download_weights_download_swiftedit_weights",
+      "download_weights_precache_base_models",
+      "download_weights_rationale_32",
+      "download_weights_rationale_60",
+      "gradio",
+      "huggingface_hub",
+      "infer",
+      "os",
+      "pil",
+      "re",
+      "tarfile",
+      "tempfile",
+      "time",
+      "torchvision_transforms_functional",
+      "torchvision_utils"
+    ],
+    "1": [
+      "diffusers",
+      "einops",
+      "models",
+      "numpy",
+      "src_attention_processor",
+      "src_attention_processor_rationale_86",
+      "src_mask_attention_processor",
+      "src_mask_ip_controller",
+      "torch",
+      "torch_nn",
+      "torch_nn_functional",
+      "transformers"
+    ],
+    "2": [
+      "inference_mode",
+      "models_ipsbv2model",
+      "models_ipsbv2model_gen_img",
+      "models_ipsbv2model_get_image_embeds",
+      "models_ipsbv2model_load_ip_adapter",
+      "models_ipsbv2model_set_controller",
+      "models_ipsbv2model_set_scale",
+      "models_py_no_grad",
+      "models_rationale_124",
+      "models_tokenize_captions"
+    ],
+    "3": [
+      "src_mask_ip_controller_maskcontroller",
+      "src_mask_ip_controller_maskcontroller_attn_batch",
+      "src_mask_ip_controller_maskcontroller_fwd_ip",
+      "src_mask_ip_controller_maskcontroller_fwd_no_ip",
+      "src_mask_ip_controller_maskcontroller_init",
+      "src_mask_ip_controller_rationale_115",
+      "src_mask_ip_controller_rationale_14",
+      "src_mask_ip_controller_rationale_25",
+      "src_mask_ip_controller_rationale_54"
+    ],
+    "4": [
+      "app_rationale_47",
+      "app_run_edit",
+      "app_sanitize",
+      "image",
+      "infer_edit_image",
+      "infer_py_no_grad",
+      "infer_rationale_47",
+      "infer_to_binary"
+    ],
+    "5": [
+      "src_attention_processor_attnprocessor2_0",
+      "src_attention_processor_attnprocessor2_0_call",
+      "src_attention_processor_attnprocessor2_0_init",
+      "src_attention_processor_ipattnprocessor2_0",
+      "src_attention_processor_ipattnprocessor2_0_call",
+      "src_attention_processor_ipattnprocessor2_0_init",
+      "src_attention_processor_rationale_110",
+      "src_attention_processor_rationale_20"
+    ],
+    "6": [
+      "models_imageprojmodel",
+      "models_imageprojmodel_forward",
+      "models_imageprojmodel_init",
+      "models_ipsbv2model_init",
+      "src_mask_attention_processor_ipattnprocessor2_0withipmaskcontroller",
+      "src_mask_attention_processor_ipattnprocessor2_0withipmaskcontroller_call",
+      "src_mask_attention_processor_ipattnprocessor2_0withipmaskcontroller_init"
+    ],
+    "7": [
+      "models_auxiliarymodel",
+      "models_auxiliarymodel_init",
+      "models_rationale_97"
+    ],
+    "8": [
+      "models_inversemodel",
+      "models_inversemodel_init",
+      "models_rationale_53"
+    ],
+    "9": [
+      "src_init"
+    ]
+  },
+  "cohesion": {
+    "0": 0.1503267973856209,
+    "1": 0.3181818181818182,
+    "2": 0.24444444444444444,
+    "3": 0.2777777777777778,
+    "4": 0.25,
+    "5": 0.25,
+    "6": 0.3333333333333333,
+    "7": 0.6666666666666666,
+    "8": 0.6666666666666666,
+    "9": 1.0
+  },
+  "gods": [
+    {
+      "id": "models_ipsbv2model",
+      "label": "IPSBV2Model",
+      "degree": 12
+    },
+    {
+      "id": "infer_edit_image",
+      "label": "edit_image()",
+      "degree": 8
+    },
+    {
+      "id": "src_mask_attention_processor_ipattnprocessor2_0withipmaskcontroller",
+      "label": "IPAttnProcessor2_0WithIPMaskController",
+      "degree": 7
+    },
+    {
+      "id": "src_mask_ip_controller_maskcontroller",
+      "label": "MaskController",
+      "degree": 7
+    },
+    {
+      "id": "src_attention_processor_attnprocessor2_0",
+      "label": "AttnProcessor2_0",
+      "degree": 6
+    },
+    {
+      "id": "src_attention_processor_ipattnprocessor2_0",
+      "label": "IPAttnProcessor2_0",
+      "degree": 6
+    },
+    {
+      "id": "app_run_edit",
+      "label": "run_edit()",
+      "degree": 4
+    },
+    {
+      "id": "models_imageprojmodel",
+      "label": "ImageProjModel",
+      "degree": 4
+    },
+    {
+      "id": "models_inversemodel",
+      "label": "InverseModel",
+      "degree": 4
+    },
+    {
+      "id": "models_auxiliarymodel",
+      "label": "AuxiliaryModel",
+      "degree": 4
+    }
+  ],
+  "surprises": [
+    {
+      "source": "edit_image()",
+      "target": "MaskController",
+      "source_files": [
+        "infer.py",
+        "src/mask_ip_controller.py"
+      ],
+      "confidence": "INFERRED",
+      "relation": "calls",
+      "why": "inferred connection - not explicitly stated in source; connects across different repos/directories; bridges separate communities"
+    },
+    {
+      "source": "IPSBV2Model",
+      "target": "AttnProcessor2_0",
+      "source_files": [
+        "models.py",
+        "src/attention_processor.py"
+      ],
+      "confidence": "INFERRED",
+      "relation": "uses",
+      "why": "inferred connection - not explicitly stated in source; connects across different repos/directories; bridges separate communities"
+    },
+    {
+      "source": "IPSBV2Model",
+      "target": "IPAttnProcessor2_0",
+      "source_files": [
+        "models.py",
+        "src/attention_processor.py"
+      ],
+      "confidence": "INFERRED",
+      "relation": "uses",
+      "why": "inferred connection - not explicitly stated in source; connects across different repos/directories; bridges separate communities"
+    },
+    {
+      "source": "IPSBV2Model",
+      "target": "IPAttnProcessor2_0WithIPMaskController",
+      "source_files": [
+        "models.py",
+        "src/mask_attention_processor.py"
+      ],
+      "confidence": "INFERRED",
+      "relation": "uses",
+      "why": "inferred connection - not explicitly stated in source; connects across different repos/directories; bridges separate communities"
+    },
+    {
+      "source": "edit_image()",
+      "target": "tokenize_captions()",
+      "source_files": [
+        "infer.py",
+        "models.py"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "connects across different repos/directories; bridges separate communities"
+    }
+  ],
+  "tokens": {
+    "input": 0,
+    "output": 0
+  }
+}

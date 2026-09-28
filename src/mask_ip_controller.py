@@ -36,12 +36,15 @@ class MaskController:
         if kwargs.get("is_mask_attn") and self.mask_s is not None:
             mask = self.mask_s.unsqueeze(0).unsqueeze(0)
             mask = F.interpolate(mask, (H, W)).flatten(0).unsqueeze(0)
-            mask = mask.flatten().unsqueeze(0).unsqueeze(-1)
+            mask = mask.flatten().unsqueeze(0).unsqueeze(-1)  # (1, hw, 1) soft [0,1]
 
-            # background
-            sim_bg = sim + mask.masked_fill(mask == 0, torch.finfo(sim.dtype).min)
-            # object
-            sim_fg = sim + mask.masked_fill(mask == 1, torch.finfo(sim.dtype).min)
+            # Binarise for attention gating (soft mask → hard gate via threshold 0.5)
+            mask_bin = (mask > 0.5).float()
+
+            # foreground attention: suppress background positions
+            sim_fg = sim + mask_bin.masked_fill(mask_bin == 0, torch.finfo(sim.dtype).min)
+            # background attention: suppress foreground positions
+            sim_bg = sim + mask_bin.masked_fill(mask_bin == 1, torch.finfo(sim.dtype).min)
             sim = torch.cat([sim_fg, sim_bg], dim=0)
         attn = sim.softmax(-1)
         if len(attn) == 2 * len(v):
@@ -136,9 +139,12 @@ class MaskController:
             out_target_fg, out_target_bg = out_target.chunk(2, 0)
 
             mask = F.interpolate(self.mask_s.unsqueeze(0).unsqueeze(0), (H, W))
-            mask = mask.reshape(-1, 1)  # (hw, 1)
-            out_target = self.scale_ip_fg * out_target_fg * mask + self.scale_ip_bg * out_source * (
-                1 - mask
+            mask = mask.reshape(-1, 1)  # (hw, 1)  soft [0,1]
+
+            # Blend: foreground region → edited (low IP scale), background → preserved (high IP scale)
+            out_target = (
+                self.scale_ip_fg * out_target_fg * mask
+                + self.scale_ip_bg * out_target_bg * (1 - mask)
             )
 
             out = torch.cat([out_source, out_target], dim=0)
@@ -169,11 +175,13 @@ class MaskController:
             out_target_fg2, out_target_bg2 = out_target2.chunk(2, 0)
 
             mask = F.interpolate(self.mask_s.unsqueeze(0).unsqueeze(0), (H, W))
-            mask = mask.reshape(-1, 1)  # (hw, 1)
+            mask = mask.reshape(-1, 1)  # (hw, 1)  soft [0,1]
 
-            out_target1 = self.scale_ip_fg * (
-                (out_target_fg1 + out_target_fg2) / 2
-            ) * mask + self.scale_ip_bg * out_source * (1 - mask)
+            # Blend: foreground → edited, background → preserved (use bg attention, not source)
+            out_target1 = (
+                self.scale_ip_fg * ((out_target_fg1 + out_target_fg2) / 2) * mask
+                + self.scale_ip_bg * out_target_bg1 * (1 - mask)
+            )
             out_target2 = out_target_fg2 * mask + out_target_bg2 * (1 - mask)
 
             out = torch.cat([out_source, out_target1, out_target2], dim=0)

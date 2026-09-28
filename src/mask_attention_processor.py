@@ -106,16 +106,23 @@ class IPAttnProcessor2_0WithIPMaskController(torch.nn.Module):
             query, ip_key, ip_value = map(lambda t: rearrange(t, 'b h n d -> (b h) n d', h=head), (query, ip_key, ip_value))
             key, value = map(lambda t: rearrange(t, 'b h n d -> (b h) n d', h=head), (key, value))
             
-            # fwd no ip
+            # fwd no ip — returns (b*h, n, d)
             sim = torch.einsum('b i d, b j d -> b i j', query, key) * attn.scale
             hidden_states = self.controller.fwd_no_ip(query, key, value, sim,
                                                     attn.heads, scale=attn.scale)
             
+            # fwd ip — returns (b*h, n, d)
             sim_ip = torch.einsum('b i d, b j d -> b i j', query, ip_key) * attn.scale
-            
             masked_ip_hidden_states = self.controller.fwd_ip(query, ip_key, ip_value, sim_ip,
                                                     attn.heads, scale=attn.scale)
             
+            # Reshape both from (b*h, n, d) -> (b, n, h*d) before summing
+            B_size = hidden_states.shape[0] // head
+            hidden_states = rearrange(hidden_states, '(b h) n d -> b n (h d)', b=B_size, h=head)
+            hidden_states = hidden_states.to(query.dtype)
+            masked_ip_hidden_states = rearrange(masked_ip_hidden_states, '(b h) n d -> b n (h d)', b=B_size, h=head)
+            masked_ip_hidden_states = masked_ip_hidden_states.to(query.dtype)
+
             hidden_states = hidden_states + masked_ip_hidden_states
         else:
             # with no controller

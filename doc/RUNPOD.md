@@ -30,7 +30,7 @@ cd SwiftEdit
 git switch exp_v3
 
 # Cài đặt thư viện Python
-# (requirements.txt đã bao gồm PyTorch nightly + CUDA 12.8)
+# (requirements.txt đã bao gồm PyTorch nightly + CUDA 12.8 + opencv-python-headless)
 pip install -r requirements.txt
 
 # Cài riêng numpy để tránh conflict
@@ -87,7 +87,10 @@ python app.py
 
 Trên bảng điều khiển RunPod → **Connect → HTTP Port 7860** để mở giao diện.
 
-### Giao diện 3 cột sau khi bấm Edit:
+### Giao diện có 2 tab chính:
+
+#### Tab 1 — ⚡ Auto Mask (mặc định)
+Áp dụng phương pháp gốc của SwiftEdit: model tự động tính toán vùng edit từ **hiệu số inverted noise**.
 
 | Cột | Nội dung |
 |---|---|
@@ -95,10 +98,26 @@ Trên bảng điều khiển RunPod → **Connect → HTTP Port 7860** để m�
 | **Edited Image** | Ảnh sau khi chỉnh sửa |
 | **Predicted Edit Mask 🔴** | Vùng mô hình dự đoán sẽ thay đổi (đỏ = edit region, tối = background) |
 
-> Mask được tự động tính từ **hiệu số inverted noise** giữa source prompt và edit prompt,
-> sau đó overlay lên ảnh gốc để bạn kiểm tra xem mô hình đang "nhìn vào đâu".
+#### Tab 2 — ✏️ Semi-Auto Mask (có vẽ mask thủ công)
+Bạn **vẽ brush stroke thô** lên vùng muốn sửa, hệ thống sẽ:
+1. Tính toán Δε noise map (giống Auto)
+2. Giao vùng (intersect) với vùng brush của bạn
+3. Lọc Connected Components và áp Distance Transform → gradient mask mịn
+
+| Phần tử | Mô tả |
+|---|---|
+| **ImageEditor** | Upload ảnh và **vẽ trực tiếp bằng brush 🔴** lên vùng cần edit |
+| **🔍 Preview Mask** | Xem trước mask mà không chạy diffusion (rất nhanh) |
+| **⚡ Edit** | Chạy toàn bộ pipeline → xuất ảnh kết quả |
+| **🌡️ Noise Heatmap** | Bản đồ nhiệt Δε (JET colormap) — đỏ = model detect sự thay đổi |
+| **⬛ Soft Mask (DT)** | Mask gradient sau Distance Transform |
+| **🔴 Overlay Preview** | Mask chồng lên ảnh gốc — kiểm tra độ chính xác |
+
+> **Lưu ý:** Tính năng vẽ mask nằm ở **Tab 2 "✏️ Semi-Auto Mask"**.  
+> Tab 1 (Auto) chỉ upload ảnh, không có brush.
 
 ---
+
 
 ## 6. Chạy CLI (không cần Gradio)
 
@@ -195,6 +214,18 @@ Kết quả lưu tại `results/{src_prompt}/{edit_prompt}_SY_{strength}.png`.
 ### HuggingFace 401 / 403 khi tải weights
 - Kiểm tra `HF_TOKEN` trong `.env` có đúng không.
 - Token phải có quyền **read**.
+
+### `ModuleNotFoundError: No module named 'cv2'`
+- `opencv-python-headless` chưa được cài (đã có trong `requirements.txt` từ v3).
+- Cài thủ công: `pip install opencv-python-headless`
+- **Không** dùng `opencv-python` (bản đầy đủ) vì server RunPod không có màn hình — sẽ báo lỗi GUI libs.
+
+### Gradio 5.x không tương thích (`gr.Brush` / `gr.Eraser` API thay đổi)
+- `requirements.txt` đã pin `gradio>=4.20,<5.0` — nếu bạn cài trước khi có file này, hãy downgrade:
+  ```bash
+  pip install "gradio>=4.20,<5.0"
+  ```
+- Gradio 5.x đã đổi API của `ImageEditor`, `Brush`, `Eraser` không tương thích ngược.
 
 ### Port 7860 không truy cập được
 - RunPod → Pod → **Connect** → kiểm tra **HTTP Port 7860** đã được expose.

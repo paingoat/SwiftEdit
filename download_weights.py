@@ -19,7 +19,7 @@ load_dotenv()
 # ── Environment setup ──────────────────────────────────────────────
 _storage = os.getenv("STORAGE", "./hf_cache")
 os.environ["HF_HOME"] = _storage
-os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
+os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = os.getenv("HF_HUB_ENABLE_HF_TRANSFER", "0")
 
 HF_TOKEN = os.getenv("HF_TOKEN", None)
 
@@ -70,15 +70,20 @@ def precache_base_models():
         {
             "repo_id": "h94/IP-Adapter",
             "desc": "IP-Adapter image encoder (used by AuxiliaryModel)",
+            "allow_patterns": ["models/image_encoder/*"],
         },
     ]
 
     for m in models:
         print(f"\n[↓] Pre-caching {m['desc']}  ({m['repo_id']}) ...")
         try:
+            kwargs = {}
+            if "allow_patterns" in m:
+                kwargs["allow_patterns"] = m["allow_patterns"]
             snapshot_download(
                 repo_id=m["repo_id"],
                 token=HF_TOKEN,
+                **kwargs,
             )
             print(f"[✓] Cached {m['repo_id']}")
         except Exception as e:

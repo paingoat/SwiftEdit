@@ -28,7 +28,7 @@ from PIL import Image
 from torchvision.utils import save_image
 import torch.nn.functional as F
 
-from infer import edit_image, edit_image_with_mask, SWIFTEDIT_WEIGHTS_ROOT
+from infer import edit_image, edit_image_with_mask, edit_image_user_mask, SWIFTEDIT_WEIGHTS_ROOT
 from models import InverseModel, AuxiliaryModel, IPSBV2Model
 from src.mask_refine import (
     extract_noise_map,
@@ -39,6 +39,7 @@ from src.mask_refine import (
     make_heatmap_overlay,
     make_soft_mask_visual,
     make_red_overlay,
+    apply_poisson_blend,
 )
 
 # ── Results directory ─────────────────────────────────────────────────────────
@@ -221,6 +222,7 @@ def run_semi_edit(
     threshold: float,
     use_otsu: bool,
     dilate_kernel: int,
+    use_poisson: bool,
 ):
     if editor_output is None or editor_output.get("background") is None:
         raise gr.Error("Please upload an image first.")
@@ -249,6 +251,7 @@ def run_semi_edit(
             use_otsu=use_otsu,
             dilate_kernel=dilate_kernel,
             scale_ta=edit_strength,
+            use_poisson=use_poisson,
         )
     finally:
         os.unlink(tmp_path)
@@ -256,16 +259,120 @@ def run_semi_edit(
     save_path = _save_result(result_tensor, src_prompt, edit_prompt, edit_strength)
     print(f"Saved → {save_path}")
 
-    result_pil = _tensor_to_pil(result_tensor)
+    # Use Poisson-composited result if available, else fall back to raw tensor
+    if use_poisson and "poisson" in debug:
+        result_pil = debug["poisson"]
+    else:
+        result_pil = _tensor_to_pil(result_tensor)
 
     report = (
         f"Mask coverage: {(soft_mask_cpu.numpy() > 0.5).mean() * 100:.1f}% of image\n"
         f"Saved to: {save_path}\n"
         f"Mode: {'Semi-Auto (brush + Δε + DT)' if editor_output else 'Auto (Δε + DT)'}\n"
+        f"Poisson blend: {'ON' if use_poisson else 'OFF'}\n"
         "✅ Edit complete."
     )
 
     return result_pil, debug["heatmap"], debug["soft_mask"], debug["overlay"], report
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Callback — User Mask Preview (no generation)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def run_user_mask_preview(
+    editor_output,
+    dilate_kernel: int,
+    dt_alpha: float,
+    dt_gamma: float,
+):
+    """
+    Preview the Distance-Transform mask from user brush strokes.
+    Fast (≈ 0 s) — no generation, just mask visualisation.
+    """
+    if editor_output is None or editor_output.get("background") is None:
+        raise gr.Error("Please upload an image first.")
+
+    background = editor_output.get("background")
+    source_pil = Image.fromarray(background) if isinstance(background, np.ndarray) else background
+    source_pil = source_pil.convert("RGB")
+    pil_512 = source_pil.resize((512, 512))
+
+    roi_mask = extract_user_brush(editor_output, dilate_kernel=dilate_kernel)
+    if roi_mask is None:
+        raise gr.Error("No brush strokes detected. Please paint the region first.")
+
+    soft_mask = distance_transform_mask(roi_mask, alpha=dt_alpha, gamma=dt_gamma)
+    img_np = np.array(pil_512)
+    softmask_pil = Image.fromarray(make_soft_mask_visual(soft_mask))
+    overlay_pil  = Image.fromarray(make_red_overlay(img_np, soft_mask))
+
+    report = (
+        f"Mask coverage: {(soft_mask > 0.5).mean() * 100:.1f}% of image\n"
+        f"Dilate kernel: {dilate_kernel}px  \u2502  DT alpha: {dt_alpha}  \u2502  gamma: {dt_gamma}\n"
+        "✅ Preview ready — adjust parameters then click ⚡ Edit."
+    )
+    return softmask_pil, overlay_pil, report
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Callback — User Mask Edit (with generation + Poisson)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def run_user_mask_edit(
+    editor_output,
+    src_prompt: str,
+    edit_prompt: str,
+    edit_strength: float,
+    dilate_kernel: int,
+    dt_alpha: float,
+    dt_gamma: float,
+):
+    if editor_output is None or editor_output.get("background") is None:
+        raise gr.Error("Please upload an image first.")
+    if not edit_prompt.strip():
+        raise gr.Error("Please enter an edit prompt.")
+    edit_strength = edit_strength or 1.0
+
+    background = editor_output.get("background")
+    source_pil = Image.fromarray(background) if isinstance(background, np.ndarray) else background
+    source_pil = source_pil.convert("RGB")
+
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+        source_pil.save(tmp, format="PNG")
+        tmp_path = tmp.name
+
+    try:
+        result_tensor, soft_mask_cpu, debug = edit_image_user_mask(
+            img_path=tmp_path,
+            src_p=src_prompt,
+            edit_p=edit_prompt,
+            inverse_model=inverse_model,
+            aux_model=aux_model,
+            ip_sb_model=ip_sb_model,
+            editor_output=editor_output,
+            dilate_kernel=dilate_kernel,
+            dt_alpha=dt_alpha,
+            dt_gamma=dt_gamma,
+            scale_ta=edit_strength,
+        )
+    except ValueError as e:
+        raise gr.Error(str(e))
+    finally:
+        os.unlink(tmp_path)
+
+    save_path = _save_result(result_tensor, src_prompt, edit_prompt, edit_strength)
+    print(f"Saved → {save_path}")
+
+    result_pil = debug["poisson"]   # Poisson-composited result is the primary output
+
+    report = (
+        f"Mask coverage: {(soft_mask_cpu.numpy() > 0.5).mean() * 100:.1f}% of image\n"
+        f"Saved to: {save_path}\n"
+        "Mode: User Mask (brush → DT → ARAM → Poisson blend)\n"
+        "✅ Edit complete."
+    )
+    return result_pil, debug["soft_mask"], debug["overlay"], report
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -385,6 +492,11 @@ with gr.Blocks(
                             info="Let OpenCV find the optimal threshold automatically",
                         )
                         sa_strength = gr.Number(label="Edit Strength", value=1.0)
+                    with gr.Row():
+                        sa_poisson = gr.Checkbox(
+                            label="🎨 Poisson Blend (fix bleeding)", value=True,
+                            info="Seamless-clone paste — eliminates ARAM attention bleeding at pixel level",
+                        )
 
                     with gr.Row():
                         preview_btn = gr.Button("🔍 Preview Mask", variant="secondary", size="lg")
@@ -438,7 +550,7 @@ with gr.Blocks(
             edit_btn.click(
                 fn=run_semi_edit,
                 inputs=[sa_editor, sa_src_prompt, sa_edit_prompt,
-                        sa_strength, sa_threshold, sa_otsu, sa_dilate],
+                        sa_strength, sa_threshold, sa_otsu, sa_dilate, sa_poisson],
                 outputs=[sa_result, sa_heatmap, sa_softmask, sa_overlay, sa_report],
             )
 
@@ -451,6 +563,118 @@ with gr.Blocks(
 | Heatmap diffuse (no clear red region) | Use more distinct prompts (cat→dog vs cat→kitten) |
 | Mask doesn't follow object edges | Try Timestep t=400 (lower = sharper edges) |
 | Edited region has hard seam artifact | Already solved by Distance Transform soft mask |
+| Bleeding still visible | Enable 🎨 Poisson Blend checkbox |
+                """)
+
+        # ── Tab 3: User Mask ──────────────────────────────────────────
+        with gr.Tab("🖌️ User Mask"):
+            gr.Markdown(
+                "**Paint precisely** over the region you want to edit. "
+                "Your brush stroke is used **directly** as the mask — no noise inference. "
+                "Poisson blending is applied automatically to eliminate any bleeding at the boundary."
+            )
+
+            with gr.Row(equal_height=False):
+
+                # Left: Inputs
+                with gr.Column(scale=5):
+                    gr.Markdown("### 📥 Input")
+                    um_editor = gr.ImageEditor(
+                        label="Upload image & paint EXACTLY the region to edit",
+                        height=450, type="pil",
+                        brush=gr.Brush(
+                            colors=["#ff0000", "#ffffff", "#00ff00"],
+                            color_mode="fixed", default_size=20,
+                        ),
+                        eraser=gr.Eraser(default_size=20),
+                        elem_id="um_editor",
+                    )
+                    with gr.Row():
+                        um_src_prompt = gr.Textbox(
+                            label="Source Prompt",
+                            placeholder="e.g. a cat sitting on a sofa",
+                            lines=2,
+                        )
+                        um_edit_prompt = gr.Textbox(
+                            label="Edit Prompt",
+                            placeholder="e.g. a dog sitting on a sofa",
+                            lines=2,
+                        )
+
+                    gr.Markdown("### ⚙️ Mask Parameters")
+                    with gr.Row():
+                        um_dilate = gr.Slider(
+                            label="Brush Dilate Kernel (px)",
+                            minimum=0, maximum=40, step=5, value=10,
+                            info="Smaller than Semi-Auto — your brush is already precise",
+                        )
+                        um_strength = gr.Number(label="Edit Strength", value=1.0)
+                    with gr.Row():
+                        um_dt_alpha = gr.Slider(
+                            label="DT Alpha", minimum=0.1, maximum=1.0, step=0.1, value=0.6,
+                            info="Blend weight for distance gradient (higher = sharper center)",
+                        )
+                        um_dt_gamma = gr.Slider(
+                            label="DT Gamma", minimum=0.3, maximum=1.5, step=0.1, value=0.7,
+                            info="< 1 = wider edit zone · > 1 = tighter edit zone",
+                        )
+
+                    with gr.Row():
+                        um_preview_btn = gr.Button("🔍 Preview Mask", variant="secondary", size="lg")
+                        um_edit_btn    = gr.Button("⚡ Edit",           variant="primary",   size="lg")
+
+                # Right: Outputs
+                with gr.Column(scale=5):
+                    gr.Markdown("### 📤 Outputs")
+                    um_result = gr.Image(
+                        label="Edited Image (Poisson Composited)",
+                        type="pil", height=350, interactive=False,
+                    )
+                    with gr.Tabs():
+                        with gr.Tab("⬛ Soft Mask (DT)"):
+                            um_softmask = gr.Image(
+                                label="Mask after Distance Transform",
+                                type="pil", height=300,
+                            )
+                            gr.Markdown(
+                                "**White** = edit center · "
+                                "**Gray gradient** = transition · "
+                                "**Black** = background"
+                            )
+                        with gr.Tab("🔴 Overlay Preview"):
+                            um_overlay = gr.Image(
+                                label="Mask overlaid on source — verify region accuracy",
+                                type="pil", height=300,
+                            )
+                    um_report = gr.Textbox(
+                        label="Pipeline Report", lines=5, interactive=False,
+                        placeholder="Run Preview or Edit to see results…",
+                    )
+
+            # Wiring: Preview (no generation)
+            um_preview_btn.click(
+                fn=run_user_mask_preview,
+                inputs=[um_editor, um_dilate, um_dt_alpha, um_dt_gamma],
+                outputs=[um_softmask, um_overlay, um_report],
+            )
+
+            # Wiring: Full edit
+            um_edit_btn.click(
+                fn=run_user_mask_edit,
+                inputs=[um_editor, um_src_prompt, um_edit_prompt,
+                        um_strength, um_dilate, um_dt_alpha, um_dt_gamma],
+                outputs=[um_result, um_softmask, um_overlay, um_report],
+            )
+
+            with gr.Accordion("💡 Tips & Tricks", open=False):
+                gr.Markdown("""
+| Problem | Solution |
+|:---|:---|
+| Bleeding at mask edge | Already handled by Poisson blending. If still visible, reduce Dilate Kernel |
+| Edit misses fine detail (hair, fur) | Paint generously then use Eraser to trim brush edges |
+| Mask gradient too wide | Increase DT Gamma (> 1) or increase DT Alpha |
+| Mask gradient too narrow / hard edge | Decrease DT Gamma (< 0.7) or decrease DT Alpha |
+| Want to compare raw vs Poisson result | Check the 🎨 Poisson toggle in Semi-Auto tab |
                 """)
 
 if __name__ == "__main__":

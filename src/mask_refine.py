@@ -340,3 +340,70 @@ def make_red_overlay(
         alpha * red_layer[mask_bool] + (1.0 - alpha) * overlay[mask_bool]
     )
     return overlay.clip(0, 255).astype(np.uint8)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 7. POISSON BLENDING — pixel-level compositing post-generation
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def apply_poisson_blend(
+    edited_np: np.ndarray,
+    original_np: np.ndarray,
+    mask_512: np.ndarray,
+    threshold: float = 0.3,
+) -> np.ndarray:
+    """
+    Paste the edited region onto the original image using cv2.seamlessClone
+    (Poisson blending). Eliminates pixel-level bleeding while maintaining
+    natural colour transitions at the boundary.
+
+    Falls back to alpha compositing if seamlessClone fails (e.g. mask touches
+    the image border, which is an OpenCV hard requirement).
+
+    Args:
+        edited_np:   (H, W, 3) uint8 — edited image from diffusion.
+        original_np: (H, W, 3) uint8 — original source image.
+        mask_512:    (H, W) float32 [0, 1] — soft mask.
+        threshold:   Binarization threshold for the Poisson mask.
+
+    Returns:
+        result: (H, W, 3) uint8 — composited image.
+    """
+    mask_bin = ((mask_512 > threshold) * 255).astype(np.uint8)
+
+    if mask_bin.max() == 0:
+        return original_np.copy()
+
+    # Compute centroid of the mask region
+    moments = cv2.moments(mask_bin)
+    if moments["m00"] < 1e-6:
+        return original_np.copy()
+
+    H, W = mask_bin.shape
+    cx = int(moments["m10"] / moments["m00"])
+    cy = int(moments["m01"] / moments["m00"])
+
+    # Clamp center safely inside image bounds
+    # seamlessClone requires that the mask does not touch the border at center
+    pad = 4
+    cx = max(pad, min(W - pad - 1, cx))
+    cy = max(pad, min(H - pad - 1, cy))
+    center = (cx, cy)
+
+    try:
+        result = cv2.seamlessClone(
+            edited_np, original_np, mask_bin, center, cv2.NORMAL_CLONE
+        )
+        return result
+    except cv2.error:
+        warnings.warn(
+            "seamlessClone failed (mask likely touches image border). "
+            "Falling back to alpha compositing."
+        )
+        alpha = mask_512[:, :, np.newaxis].astype(np.float32)
+        blended = (
+            alpha * edited_np.astype(np.float32)
+            + (1.0 - alpha) * original_np.astype(np.float32)
+        )
+        return blended.clip(0, 255).astype(np.uint8)
+

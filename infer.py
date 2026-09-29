@@ -25,6 +25,9 @@ from src.mask_refine import (
     refine_mask,
     distance_transform_mask,
     prepare_mask_tensor,
+    apply_poisson_blend,
+    make_soft_mask_visual,
+    make_red_overlay,
 )
 
 #
@@ -122,6 +125,7 @@ def edit_image_with_mask(
     dist_alpha: float = 0.6,    # Distance Transform blend weight
     dist_gamma: float = 0.7,    # Gamma correction (< 1 = wider edit zone)
     clamp_rate: float = 3.0,    # Noise map clamp aggressiveness
+    use_poisson: bool = False,  # Apply Poisson blending post-generation
     # ── Edit strength params ──────────────────────────────────────────────
     scale_ta: float = 1.0,
     scale_edit: float = 0.2,
@@ -231,6 +235,120 @@ def edit_image_with_mask(
     res_gen_img, _ = ip_sb_model.gen_img(
         pil_image=pil_img_cond, prompts=[src_p, edit_p], noise=input_sb
     )
+
+    # ── Poisson blending post-process (optional) ──────────────────────────
+    if use_poisson:
+        edited_np = res_gen_img[1].clamp(0, 1).cpu().permute(1, 2, 0).numpy()
+        edited_np = (edited_np * 255).astype(np.uint8)
+        orig_np   = np.array(pil_img_cond)
+        poisson_np = apply_poisson_blend(edited_np, orig_np, soft_mask_512)
+        debug["poisson"] = Image.fromarray(poisson_np)
+
+    return res_gen_img, mask_tensor.cpu(), debug
+
+
+@torch.no_grad()
+def edit_image_user_mask(
+    img_path,
+    src_p,
+    edit_p,
+    inverse_model,
+    aux_model,
+    ip_sb_model,
+    # ── User Mask params ──────────────────────────────────────────────────
+    editor_output=None,        # dict from gr.ImageEditor, REQUIRED
+    dilate_kernel: int = 10,   # Smaller default — brush is already precise
+    dt_alpha: float = 0.6,     # Distance Transform blend weight
+    dt_gamma: float = 0.7,     # Gamma correction for DT width
+    # ── Edit strength params ──────────────────────────────────────────────
+    scale_ta: float = 1.0,
+    scale_edit: float = 0.2,
+    scale_non_edit: float = 1.0,
+):
+    """
+    Edit image using ONLY the user-provided brush mask — no Δε noise inference
+    for masking. Poisson blending is always applied post-generation.
+
+    Compared to edit_image_with_mask(), this function:
+    1. Uses brush strokes DIRECTLY as the mask (no intersection with noise map).
+    2. Applies Distance Transform to smooth the raw brush mask.
+    3. Mandatorily applies Poisson blending to eliminate ARAM attention bleeding.
+
+    unet_inverse is still called once (with both prompts) solely to obtain
+    inverted_noise_src for the generation starting noise input_sb.
+
+    Args:
+        img_path:       Path to source image.
+        src_p:          Source prompt.
+        edit_p:         Edit prompt.
+        inverse_model:  SwiftEdit InverseModel.
+        aux_model:      SwiftEdit AuxiliaryModel.
+        ip_sb_model:    SwiftEdit IPSBV2Model.
+        editor_output:  Gradio ImageEditor dict (REQUIRED — must have brush strokes).
+        dilate_kernel:  Brush dilation size (px). Default 10.
+        dt_alpha:       Distance Transform blend weight.
+        dt_gamma:       Gamma for DT gradient width.
+        scale_ta:       Edit strength (text attention scale).
+        scale_edit:     IP-Adapter scale in foreground.
+        scale_non_edit: IP-Adapter scale in background.
+
+    Returns:
+        res_gen_img:  Result image tensor (batch, C, H, W).
+        mask_tensor:  (64, 64) float32 Tensor — final mask (CPU).
+        debug:        dict with 'soft_mask', 'overlay', 'poisson' PIL Images.
+    """
+    # ── Encode image ──────────────────────────────────────────────────────
+    pil_img_cond = Image.open(img_path).resize((512, 512))
+    processed_image = to_tensor(pil_img_cond).unsqueeze(0).to("cuda") * 2 - 1
+    latents = inverse_model.vae.encode(
+        processed_image.to(inverse_model.weight_dtype)
+    ).latent_dist.sample()
+    latents = latents * inverse_model.vae.config.scaling_factor
+
+    # ── Get inverted_noise_src for input_sb (NOT used for masking) ────────
+    _, inverted_noise_src = extract_noise_map(
+        inverse_model, latents, src_p, edit_p, clamp_rate=3.0, t=500,
+    )
+
+    # ── Extract user brush as DIRECT mask ────────────────────────────────
+    roi_mask = extract_user_brush(editor_output, dilate_kernel=dilate_kernel)
+    if roi_mask is None:
+        raise ValueError(
+            "No brush strokes detected. Please paint the region you want to edit."
+        )
+
+    # ── Distance Transform → smooth gradient mask ─────────────────────────
+    soft_mask_512 = distance_transform_mask(roi_mask, alpha=dt_alpha, gamma=dt_gamma)
+
+    # ── Prepare 64×64 tensor for MaskController ───────────────────────────
+    mask_tensor = prepare_mask_tensor(soft_mask_512, device="cuda")
+
+    # ── Debug visualizations ──────────────────────────────────────────────
+    img_np = np.array(pil_img_cond)
+    debug = {
+        "soft_mask": Image.fromarray(make_soft_mask_visual(soft_mask_512)),
+        "overlay":   Image.fromarray(make_red_overlay(img_np, soft_mask_512)),
+    }
+
+    # ── Run ARAM-guided generation ────────────────────────────────────────
+    input_sb = ip_sb_model.alpha_t * latents + ip_sb_model.sigma_t * inverted_noise_src
+    mask_controller = MaskController(
+        mask_tensor,
+        scale_text_hiddenstate=scale_ta,
+        scale_ip_fg=scale_edit,
+        scale_ip_bg=scale_non_edit,
+    )
+    ip_sb_model.set_controller(mask_controller, where=["mid_blocks", "up_blocks"])
+    res_gen_img, _ = ip_sb_model.gen_img(
+        pil_image=pil_img_cond, prompts=[src_p, edit_p], noise=input_sb
+    )
+
+    # ── Poisson blending (mandatory — eliminates ARAM attention bleeding) ─
+    edited_np  = res_gen_img[1].clamp(0, 1).cpu().permute(1, 2, 0).numpy()
+    edited_np  = (edited_np * 255).astype(np.uint8)
+    orig_np    = np.array(pil_img_cond)
+    poisson_np = apply_poisson_blend(edited_np, orig_np, soft_mask_512)
+    debug["poisson"] = Image.fromarray(poisson_np)
 
     return res_gen_img, mask_tensor.cpu(), debug
 

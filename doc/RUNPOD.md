@@ -33,8 +33,8 @@ git switch exp_v3
 # (requirements.txt đã bao gồm PyTorch nightly + CUDA 12.8 + opencv-python-headless)
 pip install -r requirements.txt
 
-# Cài riêng numpy để tránh conflict
-pip install numpy==1.26.4
+# Sửa lỗi conflict khi các package khác yêu cầu numpy >= 2
+pip install "opencv-python-headless<5.0" "contourpy<1.4.0" "numpy==1.26.4"
 ```
 
 > **Lưu ý:** `requirements.txt` tải PyTorch từ index `nightly/cu128`.  
